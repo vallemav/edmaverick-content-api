@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>edMaverick · Panel admin</title>
+<meta name="robots" content="noindex, nofollow" />
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #262b36;
+    --text: #e8e9ec;
+    --muted: #8b909c;
+    --accent: #5b8def;
+    --ok: #4caf7d;
+    --err: #e2574c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  p.sub { color: var(--muted); font-size: 13px; margin-top: 0; margin-bottom: 24px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; margin-top: 14px; }
+  label:first-child { margin-top: 0; }
+  input, select, textarea {
+    width: 100%;
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 9px 10px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  textarea { min-height: 100px; resize: vertical; font-family: ui-monospace, monospace; font-size: 12.5px; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+  button.submit {
+    margin-top: 16px;
+    width: auto;
+    background: var(--accent);
+    border: none;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.submit.full { width: 100%; }
+  button.submit:disabled { opacity: 0.5; cursor: default; }
+  button.small {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  button.small.danger { border-color: var(--err); color: var(--err); }
+  button.small.ok { border-color: var(--ok); color: var(--ok); }
+  .log {
+    margin-top: 12px;
+    font-size: 12.5px;
+    font-family: ui-monospace, monospace;
+    white-space: pre-wrap;
+    border-radius: 6px;
+    padding: 10px;
+    display: none;
+  }
+  .log.ok { display: block; background: rgba(76,175,125,0.1); border: 1px solid var(--ok); color: var(--ok); }
+  .log.err { display: block; background: rgba(226,87,76,0.1); border: 1px solid var(--err); color: var(--err); }
+  .hint { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
+  .token-row { display: flex; gap: 8px; align-items: flex-end; }
+  .token-row input { flex: 1; }
+  .token-status { font-size: 12px; color: var(--ok); margin-top: 6px; display: none; }
+  .token-status.show { display: block; }
+  .hidden { display: none !important; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 14px; }
+  .item {
+    background: #0f1115;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .item img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; background: #000; }
+  .item-body { padding: 8px; }
+  .item-body p { margin: 0 0 6px; font-size: 12px; color: var(--muted); word-break: break-word; }
+  .item-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    display: inline-block; font-size: 10.5px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(91,141,239,0.15); color: var(--accent); margin-bottom: 6px;
+  }
+  .pill.pending { background: rgba(226,87,76,0.15); color: var(--err); }
+  .list-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .list-row:last-child { border-bottom: none; }
+  .list-row .meta { font-size: 12px; color: var(--muted); }
+  .list-row .title { font-size: 14px; font-weight: 600; }
+  .refresh-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>edMaverick · Panel admin</h1>
+  <p class="sub">Solo tú. El token vive nada más en este navegador.</p>
+
+  <div class="card">
+    <label>Admin token</label>
+    <div class="token-row">
+      <input id="token" type="password" placeholder="ADMIN_TOKEN del servidor" />
+      <button class="submit" id="saveToken">Guardar</button>
+    </div>
+    <div class="token-status" id="tokenStatus">✓ Token guardado en este navegador (sessionStorage)</div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="photos">Fotos</div>
+    <div class="tab" data-tab="content">Bio / Noticias</div>
+    <div class="tab" data-tab="historia">Historia</div>
+    <div class="tab" data-tab="discografia">Discografía</div>
+  </div>
+
+  <!-- ===================== FOTOS ===================== -->
+  <div id="panel-photos">
+    <div class="card">
+      <div class="refresh-bar">
+        <label style="margin:0;">Subir fotos nuevas</label>
+      </div>
+      <div class="row">
+        <div>
+          <label>Categoría</label>
+          <select id="photoCategory">
+            <option value="">(sin categoría)</option>
+            <option value="conciertos">conciertos</option>
+            <option value="backstage">backstage</option>
+            <option value="estudio">estudio</option>
+          </select>
+        </div>
+        <div>
+          <label>Título (opcional)</label>
+          <input id="photoTitle" type="text" placeholder="ej: Auditorio Nacional 2026" />
+        </div>
+      </div>
+      <label>URLs de imágenes (una por línea)</label>
+      <textarea id="photoUrls" placeholder="https://ejemplo.com/foto1.jpg&#10;https://ejemplo.com/foto2.jpg"></textarea>
+      <button class="submit" id="submitPhotos">Publicar fotos</button>
+      <div class="log" id="logPhotos"></div>
+      <div class="hint">Se guardan directo como "approved" — el sitio público las muestra de inmediato.</div>
+    </div>
+
+    <div class="card">
+      <div class="refresh-bar">
+        <label style="margin:0;">Fotos existentes</label>
+        <div style="display:flex; gap:8px;">
+          <select id="photoFilterStatus" style="width:auto;">
+            <option value="">Todos los estados</option>
+            <option value="approved">Aprobadas</option>
+            <option value="pending">Pendientes</option>
+          </select>
+          <button class="small" id="reloadPhotos">Recargar</button>
+        </div>
+      </div>
+      <div class="grid" id="photoGrid"></div>
+      <div class="log" id="logPhotoGrid"></div>
+    </div>
+  </div>
+
+  <!-- ===================== CONTENIDO (bio/news) ===================== -->
+  <div class="card hidden" id="panel-content">
+    <label>Tipo</label>
+    <select id="contentType">
+      <option value="bio">bio</option>
+      <option value="news">news</option>
+    </select>
+
+    <label>Título</label>
+    <input id="contentTitle" type="text" placeholder="ej: Ed Maverick anuncia nuevo álbum" />
+
+    <label>URL</label>
+    <input id="contentUrl" type="text" placeholder="https://ejemplo.com/nota" />
+
+    <label>Snippet / resumen (opcional)</label>
+    <textarea id="contentSnippet" placeholder="Un par de líneas de resumen..." style="min-height:70px;"></textarea>
+
+    <button class="submit full" id="submitContent">Publicar entrada</button>
+    <div class="log" id="logContent"></div>
+    <div class="hint">Para varias entradas de un jalón, usa el modo bloque de abajo (JSON).</div>
+
+    <label style="margin-top:20px;">Bloque (JSON) — opcional, para varias entradas a la vez</label>
+    <textarea id="contentBulk" placeholder='[{"title":"...", "url":"https://...", "snippet":"..."}]'></textarea>
+    <button class="submit full" id="submitContentBulk">Publicar bloque</button>
+    <div class="log" id="logContentBulk"></div>
+  </div>
+
+  <!-- ===================== HISTORIA ===================== -->
+  <div class="card hidden" id="panel-historia">
+    <label>Fecha del hito (cualquier fecha, pasada o futura)</label>
+    <input id="histDate" type="date" />
+
+    <label>Título</label>
+    <input id="histTitle" type="text" placeholder="ej: Primer sencillo" />
+
+    <label>Descripción</label>
+    <textarea id="histDesc" placeholder="Cuenta qué pasó..." style="min-height:80px;"></textarea>
+
+    <label>Imagen (opcional, URL)</label>
+    <input id="histImage" type="text" placeholder="https://..." />
+
+    <button class="submit full" id="submitHist">Agregar a la línea de tiempo</button>
+    <div class="log" id="logHist"></div>
+
+    <div class="refresh-bar" style="margin-top:20px;">
+      <label style="margin:0;">Línea de tiempo actual</label>
+      <button class="small" id="reloadHist">Recargar</button>
+    </div>
+    <div id="histList"></div>
+  </div>
+
+  <!-- ===================== DISCOGRAFÍA ===================== -->
+  <div class="card hidden" id="panel-discografia">
+    <p class="hint" style="margin-top:0;">
+      Por ahora esto se carga a mano. Más adelante se va a poder traer directo
+      de Spotify (botón "Sincronizar con Spotify" abajo, hoy avisa que falta
+      configurar credenciales).
+    </p>
+
+    <label>Título del álbum</label>
+    <input id="albumTitle" type="text" placeholder="ej: Nocturno" />
+
+    <div class="row">
+      <div>
+        <label>Año</label>
+        <input id="albumYear" type="number" placeholder="2021" />
+      </div>
+      <div>
+        <label>Tracks</label>
+        <input id="albumTracks" type="number" placeholder="9" />
+      </div>
+    </div>
+
+    <label>Portada (URL, opcional)</label>
+    <input id="albumCover" type="text" placeholder="https://..." />
+
+    <label>Link de Spotify (opcional)</label>
+    <input id="albumSpotify" type="text" placeholder="https://open.spotify.com/album/..." />
+
+    <button class="submit full" id="submitAlbum">Agregar álbum</button>
+    <div class="log" id="logAlbum"></div>
+
+    <button class="small" id="syncSpotify" style="margin-top:14px;">Sincronizar con Spotify</button>
+    <div class="log" id="logSpotify"></div>
+
+    <div class="refresh-bar" style="margin-top:20px;">
+      <label style="margin:0;">Discografía actual</label>
+      <button class="small" id="reloadAlbums">Recargar</button>
+    </div>
+    <div id="albumList"></div>
+  </div>
+</div>
+
+<script>
+  const tokenInput = document.getElementById('token');
+  const tokenStatus = document.getElementById('tokenStatus');
+  const saved = sessionStorage.getItem('adminToken');
+  if (saved) {
+    tokenInput.value = saved;
+    tokenStatus.classList.add('show');
+  }
+  document.getElementById('saveToken').addEventListener('click', () => {
+    sessionStorage.setItem('adminToken', tokenInput.value.trim());
+    tokenStatus.classList.add('show');
+  });
+
+  // Tabs
+  const tabPanels = { photos: 'panel-photos', content: 'panel-content', historia: 'panel-historia', discografia: 'panel-discografia' };
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      Object.entries(tabPanels).forEach(([key, id]) => {
+        document.getElementById(id).classList.toggle('hidden', tab.dataset.tab !== key);
+      });
+      if (tab.dataset.tab === 'photos') loadPhotos();
+      if (tab.dataset.tab === 'historia') loadTimeline();
+      if (tab.dataset.tab === 'discografia') loadAlbums();
+    });
+  });
+
+  function getToken() {
+    const t = sessionStorage.getItem('adminToken');
+    if (!t) alert('Primero guarda tu admin token arriba.');
+    return t;
+  }
+
+  function showLog(el, ok, msg) {
+    el.className = 'log ' + (ok ? 'ok' : 'err');
+    el.textContent = msg;
+  }
+
+  async function callApi(path, method, body) {
+    const token = getToken();
+    if (!token) return null;
+    const opts = { method, headers: { 'x-admin-token': token } };
+    if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(path, opts);
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  // ---------- FOTOS ----------
+  document.getElementById('submitPhotos').addEventListener('click', async () => {
+    const category = document.getElementById('photoCategory').value;
+    const title = document.getElementById('photoTitle').value.trim();
+    const urls = document.getElementById('photoUrls').value.split('\n').map((u) => u.trim()).filter(Boolean);
+    const log = document.getElementById('logPhotos');
+    if (!urls.length) return showLog(log, false, 'Pega al menos una URL.');
+
+    const result = await callApi('/photos/manual', 'POST', { category, urls, title });
+    if (!result) return;
+    if (result.ok) {
+      showLog(log, true, `✓ ${result.data.added} agregadas (${result.data.skipped} duplicadas/omitidas)`);
+      document.getElementById('photoUrls').value = '';
+      loadPhotos();
+    } else {
+      showLog(log, false, `✗ ${result.status}: ${JSON.stringify(result.data)}`);
+    }
+  });
+
+  async function loadPhotos() {
+    const status = document.getElementById('photoFilterStatus').value;
+    const grid = document.getElementById('photoGrid');
+    const log = document.getElementById('logPhotoGrid');
+    const qs = status ? `?status=${status}` : '';
+    const result = await callApi(`/photos/all${qs}`, 'GET');
+    if (!result) return;
+    if (!result.ok) return showLog(log, false, `✗ ${result.status}: ${JSON.stringify(result.data)}`);
+    log.className = 'log';
+    grid.innerHTML = result.data.photos.map((p) => `
+      <div class="item" data-id="${p.id}">
+        <img src="${p.thumbnailUrl || p.url}" loading="lazy" />
+        <div class="item-body">
+          <span class="pill ${p.status === 'pending' ? 'pending' : ''}">${p.status}</span>
+          <p>${p.title || '(sin título)'} · ${p.category}</p>
+          <div class="item-actions">
+            ${p.status !== 'approved' ? '<button class="small ok" data-action="approve">Aprobar</button>' : ''}
+            <button class="small danger" data-action="delete">Borrar</button>
+          </div>
+        </div>
+      </div>
+    `).join('') || '<p class="hint">No hay fotos con este filtro.</p>';
+
+    grid.querySelectorAll('.item').forEach((el) => {
+      const id = el.dataset.id;
+      el.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
+        if (!confirm('¿Borrar esta foto?')) return;
+        const r = await callApi(`/photos/${id}`, 'DELETE');
+        if (r && (r.ok || r.status === 204)) loadPhotos();
+      });
+      el.querySelector('[data-action="approve"]')?.addEventListener('click', async () => {
+        const r = await callApi(`/photos/${id}/approve`, 'PATCH');
+        if (r && r.ok) loadPhotos();
+      });
+    });
+  }
+  document.getElementById('reloadPhotos').addEventListener('click', loadPhotos);
+  document.getElementById('photoFilterStatus').addEventListener('change', loadPhotos);
+
+  // ---------- CONTENIDO ----------
+  document.getElementById('submitContent').addEventListener('click', async () => {
+    const type = document.getElementById('contentType').value;
+    const title = document.getElementById('contentTitle').value.trim();
+    const url = document.getElementById('contentUrl').value.trim();
+    const snippet = document.getElementById('contentSnippet').value.trim();
+    const log = document.getElementById('logContent');
+    if (!url) return showLog(log, false, 'Falta la URL.');
+
+    const result = await callApi(`/content/${type}/manual`, 'POST', { title, url, snippet });
+    if (!result) return;
+    if (result.ok) {
+      showLog(log, true, `✓ ${result.data.added} agregada`);
+      document.getElementById('contentTitle').value = '';
+      document.getElementById('contentUrl').value = '';
+      document.getElementById('contentSnippet').value = '';
+    } else {
+      showLog(log, false, `✗ ${result.status}: ${JSON.stringify(result.data)}`);
+    }
+  });
+
+  document.getElementById('submitContentBulk').addEventListener('click', async () => {
+    const type = document.getElementById('contentType').value;
+    const raw = document.getElementById('contentBulk').value.trim();
+    const log = document.getElementById('logContentBulk');
+    let items;
+    try {
+      items = JSON.parse(raw);
+      if (!Array.isArray(items)) throw new Error('Debe ser un array');
+    } catch (e) {
+      return showLog(log, false, `JSON inválido: ${e.message}`);
+    }
+    const result = await callApi(`/content/${type}/manual`, 'POST', { items });
+    if (!result) return;
+    if (result.ok) {
+      showLog(log, true, `✓ ${result.data.added} agregadas (${result.data.skipped} duplicadas/omitidas)`);
+      document.getElementById('contentBulk').value = '';
+    } else {
+      showLog(log, false, `✗ ${result.status}: ${JSON.stringify(result.data)}`);
+    }
+  });
+
+  // ---------- HISTORIA ----------
+  document.getElementById('submitHist').addEventListener('click', async () => {
+    const date = document.getElementById('histDate').value;
+    const title = document.getElementById('histTitle').value.trim();
+    const description = document.getElementById('histDesc').value.trim();
+    const imageUrl = document.getElementById('histImage').value.trim();
+    const log = document.getElementById('logHist');
+    if (!date || !title) return showLog(log, false, 'Falta fecha y/o título.');
+
+    const result = await callApi('/timeline', 'POST', { date, title, description, imageUrl: imageUrl || null });
+    if (!result) return;
+    if (result.ok) {
+      showLog(log, true, '✓ Hito agregado');
+      document.getElementById('histDate').value = '';
+      document.getElementById('histTitle').value = '';
+      document.getElementById('histDesc').value = '';
+      document.getElementById('histImage').value = '';
+      loadTimeline();
+    } else {
+      showLog(log, false, `✗ ${result.status}: ${JSON.stringify(result.data)}`);
+    }
+  });
+
+  async function loadTimeline() {
+    const list = document.getElementById('histList');
+    const result = await callApi('/timeline', 'GET');
+    if (!result || !result.ok) return;
+    list.innerHTML = result.data.timeline.map((t) => `
+      <div class="list-row" data-id="${t.id}">
+        <div>
+          <div class="title">${t.date} — ${t.title}</div>
+          <div class="meta">${(t.description || '').slice(0, 80)}</div>
+        </div>
+        <button class="small danger" data-action="delete">Borrar</button>
+      </div>
+    `).join('') || '<p class="hint">Todavía no hay hitos.</p>';
+
+    list.querySelectorAll('.list-row').forEach((el) => {
+      const id = el.dataset.id;
+      el.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
+        if (!confirm('¿Borrar este hito?')) return;
+        const r = await callApi(`/timeline/${id}`, 'DELETE');
+        if (r && (r.ok || r.status === 204)) loadTimeline();
+      });
+    });
+  }
+  document.getElementById('reloadHist').addEventListener('click', loadTimeline);
+
+  // ---------- DISCOGRAFÍA ----------
+  document.getElementById('submitAlbum').addEventListener('click', async () => {
+    const title = document.getElementById('albumTitle').value.trim();
+    const year = document.getElementById('albumYear').value.trim();
+    const tracks = document.getElementById('albumTracks').value.trim();
+    const coverUrl = document.getElementById('albumCover').value.trim();
+    const spotifyUrl = document.getElementById('albumSpotify').value.trim();
+    const log = document.getElementById('logAlbum');
+    if (!title) return showLog(log, false, 'Falta el título del álbum.');
+
+    const result = await callApi('/albums', 'POST', {
+      title,
+      year: year ? Number(year) : null,
+      tracks: tracks ? Number(tracks) : null,
+      coverUrl: coverUrl || null,
+      spotifyUrl: spotifyUrl || null,
+    });
+    if (!result) return;
+    if (result.ok) {
+      showLog(log, true, '✓ Álbum agregado');
+      document.getElementById('albumTitle').value = '';
+      document.getElementById('albumYear').value = '';
+      document.getElementById('albumTracks').value = '';
+      document.getElementById('albumCover').value = '';
+      document.getElementById('albumSpotify').value = '';
+      loadAlbums();
+    } else {
+      showLog(log, false, `✗ ${result.status}: ${JSON.stringify(result.data)}`);
+    }
+  });
+
+  document.getElementById('syncSpotify').addEventListener('click', async () => {
+    const log = document.getElementById('logSpotify');
+    const result = await callApi('/albums/refresh', 'POST', {});
+    if (!result) return;
+    if (result.ok) {
+      showLog(log, true, `✓ ${result.data.added} álbumes sincronizados`);
+      loadAlbums();
+    } else {
+      showLog(log, false, `${result.data.error || 'No disponible todavía'}`);
+    }
+  });
+
+  async function loadAlbums() {
+    const list = document.getElementById('albumList');
+    const result = await callApi('/albums', 'GET');
+    if (!result || !result.ok) return;
+    list.innerHTML = result.data.albums.map((a) => `
+      <div class="list-row" data-id="${a.id}">
+        <div>
+          <div class="title">${a.title} ${a.year ? '(' + a.year + ')' : ''}</div>
+          <div class="meta">${a.tracks ? a.tracks + ' tracks · ' : ''}${a.source}</div>
+        </div>
+        <button class="small danger" data-action="delete">Borrar</button>
+      </div>
+    `).join('') || '<p class="hint">Todavía no hay álbumes.</p>';
+
+    list.querySelectorAll('.list-row').forEach((el) => {
+      const id = el.dataset.id;
+      el.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
+        if (!confirm('¿Borrar este álbum?')) return;
+        const r = await callApi(`/albums/${id}`, 'DELETE');
+        if (r && (r.ok || r.status === 204)) loadAlbums();
+      });
+    });
+  }
+  document.getElementById('reloadAlbums').addEventListener('click', loadAlbums);
+
+  // Carga inicial
+  loadPhotos();
+</script>
+</body>
+</html>
