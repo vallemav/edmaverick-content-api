@@ -119,8 +119,12 @@
     background: rgba(91,141,239,0.15); color: var(--accent); margin-bottom: 6px;
   }
   .pill.pending { background: rgba(226,87,76,0.15); color: var(--err); }
-  .list-row {
-    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  .edit-form { display: none; padding: 8px; border-top: 1px solid var(--border); background: #0b0d11; }
+  .edit-form.open { display: block; }
+  .edit-form label { margin-top: 8px; font-size: 11px; }
+  .edit-form input { padding: 6px 8px; font-size: 12px; }
+  .edit-form .edit-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .list-row { display: flex; justify-content: space-between; align-items: center; gap: 10px;
     padding: 10px 0; border-bottom: 1px solid var(--border);
   }
   .list-row:last-child { border-bottom: none; }
@@ -176,6 +180,11 @@
       <button class="submit" id="submitPhotos">Publicar fotos</button>
       <div class="log" id="logPhotos"></div>
       <div class="hint">Se guardan directo como "approved" — el sitio público las muestra de inmediato.</div>
+
+      <label style="margin-top:20px;">Bloque (JSON) — para varias fotos con datos distintos cada una</label>
+      <textarea id="photoBulk" placeholder='[{"url":"https://...", "title":"...", "category":"conciertos"}, {"url":"https://...", "title":"...", "category":"backstage"}]'></textarea>
+      <button class="submit" id="submitPhotoBulk">Publicar bloque</button>
+      <div class="log" id="logPhotoBulk"></div>
     </div>
 
     <div class="card">
@@ -220,6 +229,12 @@
     <textarea id="contentBulk" placeholder='[{"title":"...", "url":"https://...", "snippet":"..."}]'></textarea>
     <button class="submit full" id="submitContentBulk">Publicar bloque</button>
     <div class="log" id="logContentBulk"></div>
+
+    <div class="refresh-bar" style="margin-top:20px;">
+      <label style="margin:0;">Entradas existentes</label>
+      <button class="small" id="reloadContent">Recargar</button>
+    </div>
+    <div id="contentList"></div>
   </div>
 
   <!-- ===================== HISTORIA ===================== -->
@@ -238,6 +253,11 @@
 
     <button class="submit full" id="submitHist">Agregar a la línea de tiempo</button>
     <div class="log" id="logHist"></div>
+
+    <label style="margin-top:20px;">Bloque (JSON) — para varios hitos de un jalón</label>
+    <textarea id="histBulk" placeholder='[{"date":"2016-05-01","title":"Primeras maquetas","description":"..."}, {"date":"2019-03-10","title":"Primer álbum","description":"..."}]'></textarea>
+    <button class="submit full" id="submitHistBulk">Publicar bloque</button>
+    <div class="log" id="logHistBulk"></div>
 
     <div class="refresh-bar" style="margin-top:20px;">
       <label style="margin:0;">Línea de tiempo actual</label>
@@ -311,6 +331,7 @@
         document.getElementById(id).classList.toggle('hidden', tab.dataset.tab !== key);
       });
       if (tab.dataset.tab === 'photos') loadPhotos();
+      if (tab.dataset.tab === 'content') loadContent();
       if (tab.dataset.tab === 'historia') loadTimeline();
       if (tab.dataset.tab === 'discografia') loadAlbums();
     });
@@ -376,7 +397,20 @@
           <p>${p.title || '(sin título)'} · ${p.category}</p>
           <div class="item-actions">
             ${p.status !== 'approved' ? '<button class="small ok" data-action="approve">Aprobar</button>' : ''}
+            <button class="small" data-action="edit">Editar</button>
             <button class="small danger" data-action="delete">Borrar</button>
+          </div>
+        </div>
+        <div class="edit-form" data-role="edit-form">
+          <label>Título</label>
+          <input data-field="title" type="text" value="${(p.title || '').replace(/"/g, '&quot;')}" />
+          <label>Categoría</label>
+          <input data-field="category" type="text" value="${(p.category || '').replace(/"/g, '&quot;')}" />
+          <label>URL de la imagen</label>
+          <input data-field="url" type="text" value="${(p.url || '').replace(/"/g, '&quot;')}" />
+          <div class="edit-actions">
+            <button class="small ok" data-action="save">Guardar</button>
+            <button class="small" data-action="cancel">Cancelar</button>
           </div>
         </div>
       </div>
@@ -384,6 +418,7 @@
 
     grid.querySelectorAll('.item').forEach((el) => {
       const id = el.dataset.id;
+      const form = el.querySelector('[data-role="edit-form"]');
       el.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
         if (!confirm('¿Borrar esta foto?')) return;
         const r = await callApi(`/photos/${id}`, 'DELETE');
@@ -393,10 +428,45 @@
         const r = await callApi(`/photos/${id}/approve`, 'PATCH');
         if (r && r.ok) loadPhotos();
       });
+      el.querySelector('[data-action="edit"]')?.addEventListener('click', () => {
+        form.classList.toggle('open');
+      });
+      el.querySelector('[data-action="cancel"]')?.addEventListener('click', () => {
+        form.classList.remove('open');
+      });
+      el.querySelector('[data-action="save"]')?.addEventListener('click', async () => {
+        const title = form.querySelector('[data-field="title"]').value.trim();
+        const category = form.querySelector('[data-field="category"]').value.trim();
+        const url = form.querySelector('[data-field="url"]').value.trim();
+        const r = await callApi(`/photos/${id}`, 'PATCH', { title, category, url, thumbnailUrl: url });
+        if (r && r.ok) loadPhotos();
+        else if (r) alert(`✗ ${r.status}: ${JSON.stringify(r.data)}`);
+      });
     });
   }
   document.getElementById('reloadPhotos').addEventListener('click', loadPhotos);
   document.getElementById('photoFilterStatus').addEventListener('change', loadPhotos);
+
+  document.getElementById('submitPhotoBulk').addEventListener('click', async () => {
+    const raw = document.getElementById('photoBulk').value.trim();
+    const log = document.getElementById('logPhotoBulk');
+    let items;
+    try {
+      items = JSON.parse(raw);
+      if (!Array.isArray(items)) throw new Error('Debe ser un array');
+    } catch (e) {
+      return showLog(log, false, `JSON inválido: ${e.message}`);
+    }
+    const result = await callApi('/photos/manual', 'POST', { items });
+    if (!result) return;
+    if (result.ok) {
+      showLog(log, true, `✓ ${result.data.added} agregadas (${result.data.skipped} duplicadas/omitidas)`);
+      document.getElementById('photoBulk').value = '';
+      loadPhotos();
+    } else {
+      showLog(log, false, `✗ ${result.status}: ${JSON.stringify(result.data)}`);
+    }
+  });
 
   // ---------- CONTENIDO ----------
   document.getElementById('submitContent').addEventListener('click', async () => {
@@ -435,10 +505,76 @@
     if (result.ok) {
       showLog(log, true, `✓ ${result.data.added} agregadas (${result.data.skipped} duplicadas/omitidas)`);
       document.getElementById('contentBulk').value = '';
+      loadContent();
     } else {
       showLog(log, false, `✗ ${result.status}: ${JSON.stringify(result.data)}`);
     }
   });
+
+  async function loadContent() {
+    const type = document.getElementById('contentType').value;
+    const list = document.getElementById('contentList');
+    const result = await callApi(`/content/${type}/all`, 'GET');
+    if (!result || !result.ok) return;
+    list.innerHTML = result.data.results.map((r) => `
+      <div class="list-row" data-id="${r.id}" style="flex-direction:column; align-items:stretch;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div>
+            <span class="pill ${r.status === 'pending' ? 'pending' : ''}">${r.status}</span>
+            <div class="title">${r.title || '(sin título)'}</div>
+            <div class="meta">${r.url}</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            ${r.status !== 'approved' ? '<button class="small ok" data-action="approve">Aprobar</button>' : ''}
+            <button class="small" data-action="edit">Editar</button>
+            <button class="small danger" data-action="delete">Borrar</button>
+          </div>
+        </div>
+        <div class="edit-form" data-role="edit-form">
+          <label>Título</label>
+          <input data-field="title" type="text" value="${(r.title || '').replace(/"/g, '&quot;')}" />
+          <label>URL</label>
+          <input data-field="url" type="text" value="${(r.url || '').replace(/"/g, '&quot;')}" />
+          <label>Snippet</label>
+          <textarea data-field="snippet" style="min-height:60px;">${r.snippet || ''}</textarea>
+          <div class="edit-actions">
+            <button class="small ok" data-action="save">Guardar</button>
+            <button class="small" data-action="cancel">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    `).join('') || '<p class="hint">Todavía no hay entradas.</p>';
+
+    list.querySelectorAll('.list-row').forEach((el) => {
+      const id = el.dataset.id;
+      const form = el.querySelector('[data-role="edit-form"]');
+      el.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
+        if (!confirm('¿Borrar esta entrada?')) return;
+        const r = await callApi(`/content/${type}/${id}`, 'DELETE');
+        if (r && (r.ok || r.status === 204)) loadContent();
+      });
+      el.querySelector('[data-action="approve"]')?.addEventListener('click', async () => {
+        const r = await callApi(`/content/${type}/${id}/approve`, 'PATCH');
+        if (r && r.ok) loadContent();
+      });
+      el.querySelector('[data-action="edit"]')?.addEventListener('click', () => {
+        form.classList.toggle('open');
+      });
+      el.querySelector('[data-action="cancel"]')?.addEventListener('click', () => {
+        form.classList.remove('open');
+      });
+      el.querySelector('[data-action="save"]')?.addEventListener('click', async () => {
+        const title = form.querySelector('[data-field="title"]').value.trim();
+        const url = form.querySelector('[data-field="url"]').value.trim();
+        const snippet = form.querySelector('[data-field="snippet"]').value.trim();
+        const r = await callApi(`/content/${type}/${id}`, 'PATCH', { title, url, snippet });
+        if (r && r.ok) loadContent();
+        else if (r) alert(`✗ ${r.status}: ${JSON.stringify(r.data)}`);
+      });
+    });
+  }
+  document.getElementById('reloadContent').addEventListener('click', loadContent);
+  document.getElementById('contentType').addEventListener('change', loadContent);
 
   // ---------- HISTORIA ----------
   document.getElementById('submitHist').addEventListener('click', async () => {
@@ -468,25 +604,81 @@
     const result = await callApi('/timeline', 'GET');
     if (!result || !result.ok) return;
     list.innerHTML = result.data.timeline.map((t) => `
-      <div class="list-row" data-id="${t.id}">
-        <div>
-          <div class="title">${t.date} — ${t.title}</div>
-          <div class="meta">${(t.description || '').slice(0, 80)}</div>
+      <div class="list-row" data-id="${t.id}" style="flex-direction:column; align-items:stretch;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div>
+            <div class="title">${t.date} — ${t.title}</div>
+            <div class="meta">${(t.description || '').slice(0, 80)}</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="small" data-action="edit">Editar</button>
+            <button class="small danger" data-action="delete">Borrar</button>
+          </div>
         </div>
-        <button class="small danger" data-action="delete">Borrar</button>
+        <div class="edit-form" data-role="edit-form">
+          <label>Fecha</label>
+          <input data-field="date" type="date" value="${t.date}" />
+          <label>Título</label>
+          <input data-field="title" type="text" value="${(t.title || '').replace(/"/g, '&quot;')}" />
+          <label>Descripción</label>
+          <textarea data-field="description" style="min-height:60px;">${t.description || ''}</textarea>
+          <label>Imagen (URL)</label>
+          <input data-field="imageUrl" type="text" value="${(t.imageUrl || '').replace(/"/g, '&quot;')}" />
+          <div class="edit-actions">
+            <button class="small ok" data-action="save">Guardar</button>
+            <button class="small" data-action="cancel">Cancelar</button>
+          </div>
+        </div>
       </div>
     `).join('') || '<p class="hint">Todavía no hay hitos.</p>';
 
     list.querySelectorAll('.list-row').forEach((el) => {
       const id = el.dataset.id;
+      const form = el.querySelector('[data-role="edit-form"]');
       el.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
         if (!confirm('¿Borrar este hito?')) return;
         const r = await callApi(`/timeline/${id}`, 'DELETE');
         if (r && (r.ok || r.status === 204)) loadTimeline();
       });
+      el.querySelector('[data-action="edit"]')?.addEventListener('click', () => {
+        form.classList.toggle('open');
+      });
+      el.querySelector('[data-action="cancel"]')?.addEventListener('click', () => {
+        form.classList.remove('open');
+      });
+      el.querySelector('[data-action="save"]')?.addEventListener('click', async () => {
+        const date = form.querySelector('[data-field="date"]').value;
+        const title = form.querySelector('[data-field="title"]').value.trim();
+        const description = form.querySelector('[data-field="description"]').value.trim();
+        const imageUrl = form.querySelector('[data-field="imageUrl"]').value.trim();
+        const r = await callApi(`/timeline/${id}`, 'PATCH', { date, title, description, imageUrl: imageUrl || null });
+        if (r && r.ok) loadTimeline();
+        else if (r) alert(`✗ ${r.status}: ${JSON.stringify(r.data)}`);
+      });
     });
   }
   document.getElementById('reloadHist').addEventListener('click', loadTimeline);
+
+  document.getElementById('submitHistBulk').addEventListener('click', async () => {
+    const raw = document.getElementById('histBulk').value.trim();
+    const log = document.getElementById('logHistBulk');
+    let items;
+    try {
+      items = JSON.parse(raw);
+      if (!Array.isArray(items)) throw new Error('Debe ser un array');
+    } catch (e) {
+      return showLog(log, false, `JSON inválido: ${e.message}`);
+    }
+    const result = await callApi('/timeline/bulk', 'POST', { items });
+    if (!result) return;
+    if (result.ok) {
+      showLog(log, true, `✓ ${result.data.added} hitos agregados`);
+      document.getElementById('histBulk').value = '';
+      loadTimeline();
+    } else {
+      showLog(log, false, `✗ ${result.status}: ${JSON.stringify(result.data)}`);
+    }
+  });
 
   // ---------- DISCOGRAFÍA ----------
   document.getElementById('submitAlbum').addEventListener('click', async () => {

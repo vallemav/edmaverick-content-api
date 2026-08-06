@@ -31,6 +31,35 @@ timelineRouter.post("/", requireAdmin, (req, res) => {
   res.status(201).json({ entry });
 });
 
+// POST /admin/timeline/bulk { items: [{ date, title, description, imageUrl }, ...] }
+// Para cargar varios hitos de un jalón en formato JSON, ej:
+// [{"date":"2016-05-01","title":"Primeras maquetas","description":"..."}, ...]
+timelineRouter.post("/bulk", requireAdmin, (req, res) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items) || !items.length) {
+    return res.status(400).json({ error: "Manda 'items' (array de objetos)" });
+  }
+
+  const invalid = [];
+  const valid = [];
+  items.forEach((it, i) => {
+    if (!it || !it.date || !it.title || Number.isNaN(new Date(it.date).getTime())) {
+      invalid.push({ index: i, item: it });
+      return;
+    }
+    valid.push(it);
+  });
+
+  if (invalid.length) {
+    return res.status(400).json({ error: "Algunos items son inválidos (falta date/title o la fecha no es válida)", invalid });
+  }
+
+  const entries = valid.map((it) =>
+    addTimelineEntry({ date: it.date, title: it.title, description: it.description, imageUrl: it.imageUrl })
+  );
+  res.status(201).json({ added: entries.length });
+});
+
 // PATCH /admin/timeline/:id — editar un hito existente
 timelineRouter.patch("/:id", requireAdmin, (req, res) => {
   const { date, title, description, imageUrl } = req.body || {};

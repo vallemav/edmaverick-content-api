@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { scrapeGoogleWeb, mapScrapedWebResult } from "../services/googleWebScraper.js";
-import { addWebResults, getWebResults, updateWebResultStatus } from "../services/store.js";
+import {
+  addWebResults,
+  deleteWebResult,
+  getWebResults,
+  updateWebResult,
+  updateWebResultStatus,
+} from "../services/store.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 
 export const contentRouter = Router();
@@ -23,6 +29,15 @@ contentRouter.get("/:type/pending", requireAdmin, (req, res) => {
   const { type } = req.params;
   const results = getWebResults({ type, status: "pending" });
   res.json({ results });
+});
+
+// GET /admin/content/:type/all — todo (aprobado + pendiente), para ver
+// y administrar lo que ya está cargado.
+contentRouter.get("/:type/all", requireAdmin, (req, res) => {
+  const { type } = req.params;
+  if (!QUERIES[type]) return res.status(404).json({ error: "Tipo inválido" });
+  const results = getWebResults({ type });
+  res.json({ results, total: results.length });
 });
 
 // POST /admin/content/:type/refresh
@@ -92,4 +107,24 @@ contentRouter.patch("/:type/:id/approve", requireAdmin, (req, res) => {
   const updated = updateWebResultStatus(req.params.id, "approved");
   if (!updated) return res.status(404).json({ error: "No encontrado" });
   res.json({ result: updated });
+});
+
+// PATCH /admin/content/:type/:id — editar título/url/snippet a mano
+contentRouter.patch("/:type/:id", requireAdmin, (req, res) => {
+  const { title, url, snippet } = req.body || {};
+  const patch = {};
+  if (title !== undefined) patch.title = title;
+  if (url !== undefined) patch.url = url;
+  if (snippet !== undefined) patch.snippet = snippet;
+
+  const updated = updateWebResult(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: "No encontrado" });
+  res.json({ result: updated });
+});
+
+// DELETE /admin/content/:type/:id
+contentRouter.delete("/:type/:id", requireAdmin, (req, res) => {
+  const ok = deleteWebResult(req.params.id);
+  if (!ok) return res.status(404).json({ error: "No encontrado" });
+  res.status(204).send();
 });

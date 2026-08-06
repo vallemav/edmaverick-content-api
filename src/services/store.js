@@ -104,6 +104,22 @@ export function updateWebResultStatus(id, status) {
   return items[idx];
 }
 
+export function updateWebResult(id, patch) {
+  const items = readAll(FILES.webResults);
+  const idx = items.findIndex((r) => r.id === id);
+  if (idx === -1) return null;
+  items[idx] = { ...items[idx], ...patch, id: items[idx].id };
+  writeAll(FILES.webResults, items);
+  return items[idx];
+}
+
+export function deleteWebResult(id) {
+  const items = readAll(FILES.webResults);
+  const filtered = items.filter((r) => r.id !== id);
+  writeAll(FILES.webResults, filtered);
+  return filtered.length !== items.length;
+}
+
 // --- Historia (línea de tiempo) ---
 // Vos controlás esto 100% a mano desde el panel: cualquier fecha, cualquier
 // hito. No depende de scraping ni de ninguna API externa.

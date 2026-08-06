@@ -69,41 +69,54 @@ photosRouter.post("/refresh", requireAdmin, async (req, res) => {
 });
 
 // POST /admin/photos/manual { category, urls: ["https://...", ...] }
-// o { category, url: "https://..." } para una sola.
+// o { category, url: "https://..." } para una sola, o { items: [{url, title, category, sourcePageUrl}] }
+// para cargar varias con datos distintos cada una (formato JSON tipo array).
 // Tú ya validaste las imágenes a mano, así que entran directo como "approved".
 photosRouter.post("/manual", requireAdmin, (req, res) => {
-  const { category, url, urls, title, sourcePageUrl } = req.body || {};
+  const { category, url, urls, title, sourcePageUrl, items } = req.body || {};
 
-  // La categoría ya no es obligatoria: no todas las fotos son de un lugar/
-  // evento identificable. Si no viene, cae en "sin-categoria".
-  const finalCategory = category && category.trim() ? category.trim() : "sin-categoria";
+  let rawItems = [];
 
-  const rawUrls = Array.isArray(urls) && urls.length ? urls : url ? [url] : [];
-
-  if (!rawUrls.length) {
-    return res.status(400).json({ error: "Manda 'url' o 'urls' (array)" });
+  if (Array.isArray(items) && items.length) {
+    // Formato JSON: cada item puede traer su propio title/category/url.
+    rawItems = items.map((it) => ({
+      url: typeof it.url === "string" ? it.url.trim() : "",
+      title: it.title || "",
+      category: it.category || "",
+      sourcePageUrl: it.sourcePageUrl || null,
+    }));
+  } else {
+    // Formato simple: una categoría/título para todas las URLs.
+    const rawUrls = Array.isArray(urls) && urls.length ? urls : url ? [url] : [];
+    rawItems = rawUrls
+      .map((u) => (typeof u === "string" ? u.trim() : ""))
+      .filter(Boolean)
+      .map((u) => ({ url: u, title: title || "", category: category || "", sourcePageUrl: sourcePageUrl || null }));
   }
 
-  const cleanUrls = rawUrls
-    .map((u) => (typeof u === "string" ? u.trim() : ""))
-    .filter(Boolean);
+  if (!rawItems.length) {
+    return res.status(400).json({ error: "Manda 'url', 'urls' (array) o 'items' (array de objetos)" });
+  }
 
-  const invalid = cleanUrls.filter((u) => !/^https?:\/\//i.test(u));
+  const invalid = rawItems.filter((it) => !/^https?:\/\//i.test(it.url)).map((it) => it.url);
   if (invalid.length) {
     return res.status(400).json({ error: "URLs inválidas", invalid });
   }
 
-  const photos = cleanUrls.map((u) => ({
-    url: u,
-    thumbnailUrl: u,
-    sourcePageUrl: sourcePageUrl || null,
-    width: null,
-    height: null,
-    title: title || finalCategory,
-    category: finalCategory,
-    status: "approved", // curadas a mano, no necesitan pasar por moderación
-    fetchedAt: new Date().toISOString(),
-  }));
+  const photos = rawItems.map((it) => {
+    const finalCategory = it.category && it.category.trim() ? it.category.trim() : "sin-categoria";
+    return {
+      url: it.url,
+      thumbnailUrl: it.url,
+      sourcePageUrl: it.sourcePageUrl || null,
+      width: null,
+      height: null,
+      title: it.title || finalCategory,
+      category: finalCategory,
+      status: "approved", // curadas a mano, no necesitan pasar por moderación
+      fetchedAt: new Date().toISOString(),
+    };
+  });
 
   const added = addPhotos(photos);
   res.json({ added: added.length, total: photos.length, skipped: photos.length - added.length });
