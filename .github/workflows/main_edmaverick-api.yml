@@ -1,7 +1,7 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy Node.js app to Azure Web App - edmaverick-api
+name: Build and deploy Node.js app to Azure Web App - edMaverick-api
 
 on:
   push:
@@ -51,15 +51,15 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_4ECD6B4EA06F4B59878E1342C81A8971 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_B341B796FE514768B650397C468604E2 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_2B92F226EF074FA09C94D9D0E5AD36CB }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_E5BDBF90CEEF4665849226B87180BBA8 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_DCFCC3FAFA2E4604B70FF9BB7A272D30 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_CC06558989434CE5BF785C2C433D9009 }}
 
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'edmaverick-api'
+          app-name: 'edMaverick-api'
           slot-name: 'Production'
           package: .
           
