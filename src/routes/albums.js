@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { addAlbum, deleteAlbum, getAlbums, updateAlbum } from "../services/store.js";
-import { fetchAlbumsFromSpotify } from "../services/spotifyService.js";
+import { fetchAlbumsFromSpotify } from "../services/spotifyScraper.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 
 export const albumsRouter = Router();
@@ -43,14 +43,20 @@ albumsRouter.delete("/:id", requireAdmin, (req, res) => {
   res.status(204).send();
 });
 
-// POST /admin/albums/refresh — a futuro trae discografía real desde
-// Spotify. Por ahora responde 501 explicando que falta configurar.
+// POST /admin/albums/refresh — trae la discografía real haciendo scraping
+// de la página pública del artista en Spotify (sin API oficial, ver
+// services/spotifyScraper.js). Deduplica por spotifyUrl para que
+// refrescar varias veces no ande metiendo álbumes repetidos.
 albumsRouter.post("/refresh", requireAdmin, async (req, res) => {
   try {
-    const albums = await fetchAlbumsFromSpotify();
-    const added = albums.map((a) => addAlbum({ ...a, source: "spotify" }));
-    res.json({ added: added.length });
+    const scraped = await fetchAlbumsFromSpotify();
+
+    const existingUrls = new Set(getAlbums().map((a) => a.spotifyUrl).filter(Boolean));
+    const nuevos = scraped.filter((a) => a.title && !existingUrls.has(a.spotifyUrl));
+
+    const added = nuevos.map((a) => addAlbum({ ...a, source: "spotify" }));
+    res.json({ added: added.length, total: scraped.length, skipped: scraped.length - added.length });
   } catch (err) {
-    res.status(501).json({ error: err.message, code: err.code || "NOT_IMPLEMENTED" });
+    res.status(502).json({ error: err.message, code: err.code || "SPOTIFY_SCRAPE_FAILED" });
   }
 });
