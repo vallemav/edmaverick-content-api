@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { addAlbum, deleteAlbum, getAlbums, updateAlbum } from "../services/store.js";
-import { fetchAlbumsFromSpotify } from "../services/spotifyScraper.js";
+import { extractSpotifyAlbumId, fetchAlbumsFromSpotify, fetchAlbumTracksFromSpotify } from "../services/spotifyScraper.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const albumsRouter = Router();
 
@@ -59,4 +61,57 @@ albumsRouter.post("/refresh", requireAdmin, async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message, code: err.code || "SPOTIFY_SCRAPE_FAILED" });
   }
+});
+
+// POST /admin/albums/:id/tracks/refresh — trae la lista de canciones de UN
+// álbum desde Spotify (Pathfinder "getAlbum") y la guarda en trackList.
+// Requiere que el álbum tenga spotifyUrl (si se cargó a mano sin link de
+// Spotify, no hay forma de saber qué álbum es allá).
+albumsRouter.post("/:id/tracks/refresh", requireAdmin, async (req, res) => {
+  const album = getAlbums().find((a) => a.id === req.params.id);
+  if (!album) return res.status(404).json({ error: "No encontrado" });
+
+  const albumId = extractSpotifyAlbumId(album.spotifyUrl);
+  if (!albumId) {
+    return res.status(400).json({ error: "Este álbum no tiene un link de Spotify válido (spotifyUrl)" });
+  }
+
+  try {
+    const trackList = await fetchAlbumTracksFromSpotify({ albumId });
+    const updated = updateAlbum(album.id, { trackList, tracks: trackList.length || album.tracks });
+    res.json({ album: updated });
+  } catch (err) {
+    res.status(502).json({ error: err.message, code: err.code || "SPOTIFY_SCRAPE_FAILED" });
+  }
+});
+
+// POST /admin/albums/refresh-tracks — recorre TODOS los álbumes que tengan
+// spotifyUrl y les rellena trackList. Por defecto solo completa los que
+// todavía no tienen canciones cargadas (para no repegarle a Spotify sin
+// necesidad); mandando { force: true } en el body los vuelve a traer todos.
+// Va uno por uno con una pausa chica entre cada uno para no disparar rate
+// limiting de Spotify.
+albumsRouter.post("/refresh-tracks", requireAdmin, async (req, res) => {
+  const force = Boolean(req.body?.force);
+  const albums = getAlbums().filter((a) => a.spotifyUrl && (force || !a.trackList || a.trackList.length === 0));
+
+  const results = [];
+  for (const album of albums) {
+    const albumId = extractSpotifyAlbumId(album.spotifyUrl);
+    if (!albumId) {
+      results.push({ id: album.id, title: album.title, ok: false, error: "spotifyUrl inválida" });
+      continue;
+    }
+    try {
+      const trackList = await fetchAlbumTracksFromSpotify({ albumId });
+      updateAlbum(album.id, { trackList, tracks: trackList.length || album.tracks });
+      results.push({ id: album.id, title: album.title, ok: true, tracks: trackList.length });
+    } catch (err) {
+      results.push({ id: album.id, title: album.title, ok: false, error: err.message });
+    }
+    await sleep(300); // pequeña pausa entre álbum y álbum
+  }
+
+  const ok = results.filter((r) => r.ok).length;
+  res.json({ processed: results.length, ok, failed: results.length - ok, results });
 });

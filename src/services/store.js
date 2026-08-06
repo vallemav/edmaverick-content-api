@@ -176,7 +176,9 @@ export function addAlbum(album) {
     year: album.year || null,
     coverUrl: album.coverUrl || null,
     tracks: album.tracks || null,
+    trackList: album.trackList || null, // [{ number, discNumber, title, duration, durationMs, artists, spotifyUrl }]
     spotifyUrl: album.spotifyUrl || null,
+    releaseType: album.releaseType || null, // "album" | "single" | "compilation"
     source: album.source || "manual", // "manual" | "spotify"
     createdAt: new Date().toISOString(),
   };

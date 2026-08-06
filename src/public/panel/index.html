@@ -300,6 +300,9 @@
     <button class="small" id="syncSpotify" style="margin-top:14px;">Sincronizar con Spotify</button>
     <div class="log" id="logSpotify"></div>
 
+    <button class="small" id="syncTracks" style="margin-top:8px;">Traer canciones de todos los álbumes</button>
+    <div class="log" id="logTracks"></div>
+
     <div class="refresh-bar" style="margin-top:20px;">
       <label style="margin:0;">Discografía actual</label>
       <button class="small" id="reloadAlbums">Recargar</button>
@@ -723,19 +726,43 @@
     }
   });
 
+  document.getElementById('syncTracks').addEventListener('click', async () => {
+    const log = document.getElementById('logTracks');
+    showLog(log, true, 'Trayendo canciones, puede tardar un poco...');
+    const result = await callApi('/albums/refresh-tracks', 'POST', {});
+    if (!result) return;
+    if (result.ok) {
+      showLog(log, true, `✓ ${result.data.ok}/${result.data.processed} álbumes con canciones (${result.data.failed} fallaron)`);
+      loadAlbums();
+    } else {
+      showLog(log, false, `${result.data.error || 'No se pudo'}`);
+    }
+  });
+
   async function loadAlbums() {
     const list = document.getElementById('albumList');
     const result = await callApi('/albums', 'GET');
     if (!result || !result.ok) return;
-    list.innerHTML = result.data.albums.map((a) => `
-      <div class="list-row" data-id="${a.id}">
-        <div>
-          <div class="title">${a.title} ${a.year ? '(' + a.year + ')' : ''}</div>
-          <div class="meta">${a.tracks ? a.tracks + ' tracks · ' : ''}${a.source}</div>
+    list.innerHTML = result.data.albums.map((a) => {
+      const trackListHtml = (a.trackList || []).map((t) => `
+        <div class="meta" style="padding-left:10px;">${t.number ? t.number + '. ' : ''}${t.title}${t.duration ? ' — ' + t.duration : ''}</div>
+      `).join('');
+      return `
+      <div class="list-row" data-id="${a.id}" style="flex-direction:column; align-items:stretch;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div class="title">${a.title} ${a.year ? '(' + a.year + ')' : ''}</div>
+            <div class="meta">${a.tracks ? a.tracks + ' tracks · ' : ''}${a.source}${a.trackList && a.trackList.length ? ' · canciones cargadas' : ''}</div>
+          </div>
+          <div>
+            <button class="small" data-action="tracks">${a.trackList && a.trackList.length ? 'Ver/actualizar canciones' : 'Traer canciones'}</button>
+            <button class="small danger" data-action="delete">Borrar</button>
+          </div>
         </div>
-        <button class="small danger" data-action="delete">Borrar</button>
+        <div class="track-list hidden">${trackListHtml || '<p class="hint">Sin canciones cargadas todavía.</p>'}</div>
       </div>
-    `).join('') || '<p class="hint">Todavía no hay álbumes.</p>';
+    `;
+    }).join('') || '<p class="hint">Todavía no hay álbumes.</p>';
 
     list.querySelectorAll('.list-row').forEach((el) => {
       const id = el.dataset.id;
@@ -743,6 +770,22 @@
         if (!confirm('¿Borrar este álbum?')) return;
         const r = await callApi(`/albums/${id}`, 'DELETE');
         if (r && (r.ok || r.status === 204)) loadAlbums();
+      });
+      el.querySelector('[data-action="tracks"]')?.addEventListener('click', async (e) => {
+        const trackListEl = el.querySelector('.track-list');
+        if (!trackListEl.classList.contains('hidden')) {
+          trackListEl.classList.add('hidden');
+          return;
+        }
+        e.target.textContent = 'Trayendo...';
+        const r = await callApi(`/albums/${id}/tracks/refresh`, 'POST', {});
+        if (r && r.ok) {
+          loadAlbums();
+        } else {
+          trackListEl.innerHTML = `<p class="hint">✗ ${(r && r.data && r.data.error) || 'No se pudo traer las canciones'}</p>`;
+          trackListEl.classList.remove('hidden');
+          e.target.textContent = 'Reintentar';
+        }
       });
     });
   }
